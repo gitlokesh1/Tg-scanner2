@@ -1,28 +1,19 @@
 /**
  * telegram.js — GramJS CDN loader with multi-CDN fallback
- * Tries each source in order; resolves on first success.
+ *
+ * IMPORTANT: The unpkg *browser bundle* is the only CDN that reliably
+ * includes ALL GramJS internals (helpers, crypto, MTProto) in one file.
+ * ESM-only CDNs (esm.sh, jsdelivr) often miss internal dependencies
+ * like helpers.generateRandomLong, causing crashes after TelegramClient
+ * is instantiated. So we always try the browser bundle first.
  */
 
-const CDN_CANDIDATES = [
-  {
-    type: 'esm',
-    url: 'https://esm.sh/telegram@2.26.22',
-  },
-  {
-    type: 'esm',
-    url: 'https://cdn.jsdelivr.net/npm/telegram@2.26.22/+esm',
-  },
-  {
-    type: 'script',
-    url: 'https://unpkg.com/telegram@2.26.22/dist/browser/index.js',
-    globalKey: 'TelegramLib',
-  },
-];
-
-/** Load a <script> tag and wait for window[globalKey] to be set */
-function loadFromScript(url, globalKey) {
+/**
+ * Load unpkg browser bundle via <script> tag.
+ * It exposes everything on window.gramjs (or window.TelegramLib).
+ */
+function loadFromScript(url) {
   return new Promise((resolve, reject) => {
-    // Remove any previous failed script with same src
     const existing = document.querySelector(`script[src="${url}"]`);
     if (existing) existing.remove();
 
@@ -33,14 +24,16 @@ function loadFromScript(url, globalKey) {
     const timer = setTimeout(() => {
       s.remove();
       reject(new Error(`Timeout loading script: ${url}`));
-    }, 30000);
+    }, 40000);
 
     s.onload = () => {
       clearTimeout(timer);
-      if (window[globalKey]) {
-        resolve(window[globalKey]);
+      // The unpkg browser build exposes window.gramjs
+      const g = window.gramjs || window.TelegramLib;
+      if (g && g.TelegramClient) {
+        resolve(g);
       } else {
-        reject(new Error(`${globalKey} not found on window after script load`));
+        reject(new Error('TelegramClient not found on window after script load'));
       }
     };
 
@@ -54,17 +47,11 @@ function loadFromScript(url, globalKey) {
   });
 }
 
-/** Dynamic ESM import */
-async function loadFromESM(url) {
-  return import(/* @vite-ignore */ url);
-}
-
 /**
- * Given a raw module object, extract { TelegramClient, Api, StringSession }.
- * Handles multiple export shapes produced by different CDNs.
+ * Given a raw module/object, extract { TelegramClient, Api, StringSession }.
+ * Handles multiple export shapes from different CDNs.
  */
 function extractLib(mod) {
-  // Flatten default export if present
   const root = (mod && mod.default) ? { ...mod.default, ...mod } : mod;
 
   const TelegramClient =
@@ -82,53 +69,74 @@ function extractLib(mod) {
     (root.session && root.session.StringSession);
 
   if (!TelegramClient) throw new Error('TelegramClient not found in module');
-  if (!StringSession) throw new Error('StringSession not found in module');
+  if (!StringSession)   throw new Error('StringSession not found in module');
 
   return { TelegramClient, Api, StringSession };
 }
 
 /**
- * Try every CDN candidate in order; return first successful lib object.
- * @returns {Promise<{TelegramClient, Api, StringSession}>}
+ * Try CDN sources in order.
+ * unpkg browser bundle is FIRST because it's the only fully-bundled build.
+ * ESM sources are fallbacks only.
  */
 export async function loadGramJS() {
   const errors = [];
 
-  for (const candidate of CDN_CANDIDATES) {
-    try {
-      let mod;
-      if (candidate.type === 'script') {
-        mod = await loadFromScript(candidate.url, candidate.globalKey);
-      } else {
-        mod = await loadFromESM(candidate.url);
-      }
-      const lib = extractLib(mod);
-      console.info('[TG] GramJS loaded from', candidate.url);
-      return lib;
-    } catch (err) {
-      console.warn('[TG] CDN failed:', candidate.url, '—', err.message);
-      errors.push(`${candidate.url}: ${err.message}`);
-    }
+  // ── 1. unpkg browser bundle (most reliable, fully bundled) ──────────────
+  try {
+    const mod = await loadFromScript(
+      'https://unpkg.com/telegram@2.26.22/dist/browser/index.js'
+    );
+    const lib = extractLib(mod);
+    console.info('[TG] GramJS loaded from unpkg browser bundle ✓');
+    return lib;
+  } catch (err) {
+    console.warn('[TG] unpkg failed:', err.message);
+    errors.push('unpkg: ' + err.message);
   }
 
-  throw new Error(
-    'All GramJS CDN sources failed.\n' + errors.join('\n')
-  );
+  // ── 2. esm.sh (ESM fallback) ─────────────────────────────────────────────
+  try {
+    const [tgMod, sessMod] = await Promise.all([
+      import('https://esm.sh/telegram@2.26.22'),
+      import('https://esm.sh/telegram@2.26.22/sessions'),
+    ]);
+    const lib = extractLib({ ...tgMod, StringSession: sessMod.StringSession });
+    console.info('[TG] GramJS loaded from esm.sh ✓');
+    return lib;
+  } catch (err) {
+    console.warn('[TG] esm.sh failed:', err.message);
+    errors.push('esm.sh: ' + err.message);
+  }
+
+  // ── 3. jsdelivr ESM (last resort) ────────────────────────────────────────
+  try {
+    const [tgMod, sessMod] = await Promise.all([
+      import('https://cdn.jsdelivr.net/npm/telegram@2.26.22/+esm'),
+      import('https://cdn.jsdelivr.net/npm/telegram@2.26.22/sessions/+esm'),
+    ]);
+    const lib = extractLib({ ...tgMod, StringSession: sessMod.StringSession });
+    console.info('[TG] GramJS loaded from jsdelivr ✓');
+    return lib;
+  } catch (err) {
+    console.warn('[TG] jsdelivr failed:', err.message);
+    errors.push('jsdelivr: ' + err.message);
+  }
+
+  throw new Error('All GramJS CDN sources failed.\n' + errors.join('\n'));
 }
 
-// Cached promise — only loads once
+// Cached promise — loads only once per page session
 let _gramPromise = null;
 
 /**
  * Returns a cached promise that resolves to the GramJS lib.
- * Safe to call multiple times.
- * @returns {Promise<{TelegramClient, Api, StringSession}>}
+ * Safe to call multiple times from anywhere.
  */
 export function ensureGramReady() {
   if (!_gramPromise) {
     _gramPromise = loadGramJS().catch((err) => {
-      // Reset so the caller can retry
-      _gramPromise = null;
+      _gramPromise = null; // allow retry
       throw err;
     });
   }
