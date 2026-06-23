@@ -1,11 +1,34 @@
 /**
  * telegram.js — GramJS CDN loader
  *
- * FIXED: The pre-compiled browser bundle file does NOT exist in v2.26.22.
- * We now use pure ESM imports with '?bundle' to force CDNs to package all 
- * internal dependencies into a single file, preventing 'generateRandomLong' errors.
+ * FIXED: Added Node.js Polyfills (Buffer, process, global) required by GramJS
+ * crypto operations when using ESM bundlers.
  */
 
+// ── Node.js Polyfills ────────────────────────────────────────────────────────
+async function loadPolyfills() {
+  // 1. Define global and process (often required by Node.js modules)
+  window.global = window.global || window;
+  window.process = window.process || { env: {}, nextTick: (cb) => setTimeout(cb, 0) };
+
+  // 2. Load Buffer from CDNJS if it doesn't exist
+  if (window.Buffer) return;
+
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/buffer/6.0.3/buffer.min.js';
+    s.crossOrigin = 'anonymous'; // Safe for cdnjs
+    s.onload = () => {
+      // Attach Buffer to the global window object
+      window.Buffer = window.buffer.Buffer; 
+      resolve();
+    };
+    s.onerror = () => reject(new Error('Failed to load Buffer polyfill'));
+    document.head.appendChild(s);
+  });
+}
+
+// ── GramJS Extractor ─────────────────────────────────────────────────────────
 function extractLib(mod) {
   const root = (mod && mod.default) ? { ...mod.default, ...mod } : mod;
 
@@ -22,10 +45,19 @@ function extractLib(mod) {
   return { TelegramClient, Api, StringSession };
 }
 
+// ── Main Loader ──────────────────────────────────────────────────────────────
 export async function loadGramJS() {
   const errors = [];
 
-  // ── 1. esm.sh Bundled (Primary: Packs all internals into one file) ───────
+  // 🔥 STEP 1: Load Polyfills BEFORE loading GramJS
+  try {
+    await loadPolyfills();
+    console.info('[TG] Node.js Polyfills (Buffer) loaded ✓');
+  } catch (err) {
+    console.warn('[TG] Polyfill warning:', err.message);
+  }
+
+  // 🔥 STEP 2: Load GramJS (ESM Bundled)
   try {
     const mod = await import('https://esm.sh/telegram@2.26.22?bundle');
     const lib = extractLib(mod);
@@ -36,7 +68,6 @@ export async function loadGramJS() {
     errors.push('esm.sh: ' + err.message);
   }
 
-  // ── 2. Skypack (Excellent built-in Node polyfills) ───────────────────────
   try {
     const mod = await import('https://cdn.skypack.dev/telegram@2.26.22?min');
     const lib = extractLib(mod);
@@ -47,20 +78,10 @@ export async function loadGramJS() {
     errors.push('skypack: ' + err.message);
   }
 
-  // ── 3. jsdelivr ESM (Fallback) ───────────────────────────────────────────
-  try {
-    const mod = await import('https://cdn.jsdelivr.net/npm/telegram@2.26.22/+esm');
-    const lib = extractLib(mod);
-    console.info('[TG] GramJS loaded from jsdelivr ESM ✓');
-    return lib;
-  } catch (err) {
-    console.warn('[TG] jsdelivr ESM failed:', err.message);
-    errors.push('jsdelivr ESM: ' + err.message);
-  }
-
   throw new Error('All GramJS CDN sources failed.\n' + errors.join('\n'));
 }
 
+// ── Caching ──────────────────────────────────────────────────────────────────
 let _gramPromise = null;
 
 export function ensureGramReady() {
