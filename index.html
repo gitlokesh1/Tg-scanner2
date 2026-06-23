@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TG Scanner v2 — Telegram HR Outreach Tool</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Font Awesome 6.5 CDN -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+    crossorigin="anonymous"
+    referrerpolicy="no-referrer"
+  />
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {}
+      }
+    };
+  </script>
+
+  <style>
+    /* Modal backdrop */
+    .modal-backdrop {
+      background: rgba(2, 6, 23, 0.82);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+    /* Smooth transitions */
+    * { box-sizing: border-box; }
+
+    /* Hide number input arrows */
+    input[type=number]::-webkit-outer-spin-button,
+    input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+  </style>
+</head>
+
+<body class="bg-[#020617] text-slate-200 min-h-screen">
+
+  <!-- ════════════════════════════════════════════
+       NAVBAR
+       ════════════════════════════════════════════ -->
+  <nav class="sticky top-0 z-40 bg-[#0f172a] border-b border-slate-700/80 px-4 py-3">
+    <div class="max-w-6xl mx-auto flex items-center justify-between relative">
+
+      <!-- Logo + GramJS badge -->
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+          <i class="fa-brands fa-telegram text-white text-base"></i>
+        </div>
+        <span class="font-bold text-white text-lg tracking-tight">
+          TG Scanner <span class="text-blue-400">v2</span>
+        </span>
+        <span id="gram-badge"
+          class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400">
+          <i class="fa-solid fa-circle-notch fa-spin mr-1"></i>Loading GramJS…
+        </span>
+      </div>
+
+      <!-- Right side: active account + menu -->
+      <div class="flex items-center gap-2">
+        <div id="active-account-badge" class="hidden sm:flex items-center gap-2 mr-1">
+          <span id="active-initials"
+            class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold text-white">
+          </span>
+          <span id="active-name" class="hidden md:block text-sm text-slate-300 max-w-[120px] truncate"></span>
+        </div>
+
+        <button id="menu-btn"
+          class="w-9 h-9 rounded-lg hover:bg-slate-700 flex items-center justify-center transition-colors"
+          aria-label="Open menu">
+          <i class="fa-solid fa-ellipsis-vertical text-slate-300"></i>
+        </button>
+      </div>
+
+      <!-- ── Kebab dropdown menu ── -->
+      <div id="kebab-menu"
+        class="hidden absolute right-0 top-12 z-50 bg-[#1e293b] border border-slate-600 rounded-2xl shadow-2xl w-64 p-2 overflow-hidden">
+
+        <div class="px-3 py-1.5 text-xs text-slate-500 uppercase tracking-wider font-semibold">
+          Accounts
+        </div>
+        <div id="menu-accounts-list" class="mb-1"></div>
+
+        <hr class="border-slate-600/60 my-1.5" />
+
+        <button id="menu-gemini-btn"
+          class="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-slate-700 text-sm text-slate-300 transition-colors">
+          <i class="fa-solid fa-key text-yellow-400 w-4 text-center"></i>
+          <span>Gemini API Key</span>
+        </button>
+
+        <button id="menu-stats-btn"
+          class="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-slate-700 text-sm text-slate-300 transition-colors">
+          <i class="fa-solid fa-chart-bar text-blue-400 w-4 text-center"></i>
+          <span>Stats</span>
+          <i class="fa-solid fa-chevron-down ml-auto text-xs text-slate-500"></i>
+        </button>
+
+        <div id="menu-stats-panel" class="hidden px-3 py-2 bg-slate-800/50 rounded-xl mt-1 text-xs space-y-1.5">
+          <div class="flex justify-between text-slate-400">
+            <span>Groups found</span>
+            <span id="stat-groups" class="text-white font-medium">0</span>
+          </div>
+          <div class="flex justify-between text-slate-400">
+            <span>Candidates</span>
+            <span id="stat-candidates" class="text-white font-medium">0</span>
+          </div>
+          <div class="flex justify-between text-slate-400">
+            <span>Accounts</span>
+            <span id="stat-accounts" class="text-white font-medium">0</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ════════════════════════════════════════════
+       OPERATION PROGRESS BAR
+       ════════════════════════════════════════════ -->
+  <div id="progress-bar-wrap"
+    class="hidden w-full bg-[#0f172a] border-b border-slate-700/50 px-4 py-2.5">
+    <div class="max-w-6xl mx-auto">
+      <div class="flex items-center justify-between text-xs text-slate-400 mb-1.5">
+        <span id="progress-label" class="truncate">Working…</span>
+        <span id="progress-pct" class="ml-3 flex-shrink-0">0%</span>
+      </div>
+      <div class="w-full bg-slate-700/60 rounded-full h-1.5 overflow-hidden">
+        <div id="progress-fill"
+          class="bg-blue-500 h-full rounded-full transition-all duration-300 ease-out"
+          style="width:0%"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════
+       MAIN CONTENT
+       ════════════════════════════════════════════ -->
+  <main class="max-w-6xl mx-auto px-4 pb-24 pt-5">
+
+    <!-- Step indicator -->
+    <div id="stepper" class="flex items-center gap-1 mb-6 overflow-x-auto pb-1 scrollbar-hide">
+      <!-- rendered by ui.js renderStepper() -->
+    </div>
+
+    <!-- ── SECTION 1: Accounts ── -->
+    <section id="login-panel" class="mb-8">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+          <i class="fa-solid fa-users text-blue-400"></i>
+          Accounts
+        </h2>
+        <button id="add-account-btn"
+          class="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded-xl text-sm font-medium transition-colors shadow-lg shadow-blue-900/30">
+          <i class="fa-solid fa-plus"></i>
+          Add Account
+        </button>
+      </div>
+
+      <div id="accounts-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <!-- Placeholder; replaced by renderAccounts() -->
+        <div class="col-span-full flex flex-col items-center justify-center py-12 text-slate-500">
+          <i class="fa-solid fa-user-plus text-4xl mb-3 opacity-30"></i>
+          <p class="text-sm">No accounts yet. Click "Add Account" to get started.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── SECTION 2: Search ── -->
+    <section id="search-panel" class="mb-8">
+      <h2 class="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+        <i class="fa-solid fa-magnifying-glass text-blue-400"></i>
+        Find Groups
+      </h2>
+
+      <div class="bg-[#0f172a] border border-slate-700/80 rounded-2xl p-5">
+        <div class="flex flex-col sm:flex-row gap-3 mb-4">
+          <input
+            id="niche-input"
+            type="text"
+            placeholder="Enter niche (e.g. iGaming, affiliate marketing, crypto…)"
+            class="flex-1 bg-[#1e293b] border border-slate-600 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition"
+          />
+          <button id="gen-keywords-btn"
+            class="flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-500 active:bg-purple-700 rounded-xl text-sm font-medium transition-colors whitespace-nowrap shadow-lg shadow-purple-900/30 disabled:opacity-50 disabled:cursor-not-allowed">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            AI Keywords
+          </button>
+          <button id="search-groups-btn"
+            class="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded-xl text-sm font-medium transition-colors whitespace-nowrap shadow-lg shadow-blue-900/30 disabled:opacity-50 disabled:cursor-not-allowed">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            Find Groups
+          </button>
+        </div>
+
+        <!-- Keywords chips -->
+        <div id="keywords-chips" class="flex flex-wrap gap-2"></div>
+      </div>
+    </section>
+
+    <!-- ── SECTION 3: Groups / Scan ── -->
+    <section id="scan-panel" class="mb-8">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+          <i class="fa-solid fa-satellite-dish text-blue-400"></i>
+          Groups
+        </h2>
+        <div class="flex gap-2">
+          <button id="select-all-btn"
+            class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-xl text-xs font-medium transition-colors">
+            Select All
+          </button>
+          <button id="scan-btn"
+            class="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 active:bg-green-700 rounded-xl text-sm font-medium transition-colors shadow-lg shadow-green-900/30 disabled:opacity-50 disabled:cursor-not-allowed">
+            <i class="fa-solid fa-satellite-dish"></i>
+            Scan Leads
+          </button>
+        </div>
+      </div>
+
+      <div id="groups-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div class="col-span-full flex flex-col items-center justify-center py-12 text-slate-500">
+          <i class="fa-solid fa-magnifying-glass text-4xl mb-3 opacity-30"></i>
+          <p class="text-sm">Search for groups first.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── SECTION 4: Outreach ── -->
+    <section id="outreach-panel" class="mb-8">
+      <h2 class="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+        <i class="fa-solid fa-paper-plane text-blue-400"></i>
+        Outreach
+      </h2>
+
+      <!-- Base template -->
+      <div class="bg-[#0f172a] border border-slate-700/80 rounded-2xl p-5 mb-4">
+        <label class="block text-sm font-medium text-slate-300 mb-2">
+          Base DM Template
+          <span class="ml-2 text-xs text-slate-500 font-normal">(AI will personalize this for each candidate)</span>
+        </label>
+        <textarea
+          id="base-template"
+          rows="4"
+          placeholder="Hi, I came across your profile and think you'd be a great fit for an exciting iGaming opportunity. Would love to connect!"
+          class="w-full bg-[#1e293b] border border-slate-600 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition resize-none leading-relaxed"
+        ></textarea>
+      </div>
+
+      <!-- Candidates grid -->
+      <div id="candidates-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div class="col-span-full flex flex-col items-center justify-center py-12 text-slate-500">
+          <i class="fa-solid fa-users text-4xl mb-3 opacity-30"></i>
+          <p class="text-sm">Scan groups to find candidates.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ════════════════════════════════════════════
+       LOGIN MODAL
+       ════════════════════════════════════════════ -->
+  <!--
+    CRITICAL: This modal uses BOTH 'hidden' and 'flex' classes.
+    Open:  remove 'hidden', add 'flex'
+    Close: add 'hidden',    remove 'flex'
+    See renderLoginModal() in ui.js
+  -->
+  <div id="login-modal"
+    class="hidden fixed inset-0 z-50 items-center justify-center p-4 modal-backdrop">
+
+    <div class="bg-[#0f172a] border border-slate-600/80 rounded-2xl w-full max-w-md shadow-2xl">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between p-6 pb-0">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center">
+            <i class="fa-brands fa-telegram text-blue-400 text-lg"></i>
+          </div>
+          <div>
+            <h3 class="text-white font-semibold">Add Telegram Account</h3>
+            <p class="text-xs text-slate-500">Secure login • No data leaves your browser</p>
+          </div>
+        </div>
+        <button id="close-login-modal"
+          class="w-8 h-8 rounded-xl hover:bg-slate-700 flex items-center justify-center transition-colors flex-shrink-0">
+          <i class="fa-solid fa-xmark text-slate-400"></i>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="p-6 space-y-4">
+
+        <!-- Step: Phone -->
+        <div id="login-step-phone">
+          <label class="block text-sm font-medium text-slate-300 mb-2">
+            Phone Number <span class="text-slate-500 font-normal">(with country code)</span>
+          </label>
+          <input
+            id="login-phone-input"
+            type="tel"
+            placeholder="+917890123456"
+            autocomplete="tel"
+            class="w-full bg-[#1e293b] border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition text-base"
+          />
+          <button id="send-otp-btn"
+            class="mt-4 w-full py-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+            <i class="fa-solid fa-paper-plane"></i>
+            Send OTP
+          </button>
+        </div>
+
+        <!-- Step: OTP -->
+        <div id="login-step-otp" class="hidden">
+          <label class="block text-sm font-medium text-slate-300 mb-2">Enter OTP from Telegram</label>
+          <input
+            id="login-otp-input"
+            type="number"
+            inputmode="numeric"
+            placeholder="12345"
+            maxlength="10"
+            class="w-full bg-[#1e293b] border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition text-center text-3xl tracking-[0.5em] font-mono"
+          />
+          <button id="verify-otp-btn"
+            class="mt-4 w-full py-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+            <i class="fa-solid fa-check"></i>
+            Verify OTP
+          </button>
+        </div>
+
+        <!-- Step: 2FA Password -->
+        <div id="login-step-password" class="hidden">
+          <label class="block text-sm font-medium text-slate-300 mb-2">
+            2FA Cloud Password
+          </label>
+          <input
+            id="login-password-input"
+            type="password"
+            placeholder="Your Telegram 2FA password"
+            autocomplete="current-password"
+            class="w-full bg-[#1e293b] border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition"
+          />
+          <button id="verify-password-btn"
+            class="mt-4 w-full py-3 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+            <i class="fa-solid fa-lock-open"></i>
+            Submit Password
+          </button>
+        </div>
+
+        <!-- Status box -->
+        <div id="login-status"
+          class="hidden mt-2 px-4 py-3 rounded-xl bg-slate-800/80 text-sm leading-relaxed">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════
+       DM MODAL
+       ════════════════════════════════════════════ -->
+  <div id="dm-modal"
+    class="hidden fixed inset-0 z-50 items-center justify-center p-4 modal-backdrop">
+
+    <div class="bg-[#0f172a] border border-slate-600/80 rounded-2xl w-full max-w-lg shadow-2xl">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between p-6 pb-0">
+        <h3 class="text-white font-semibold flex items-center gap-2">
+          <i class="fa-solid fa-wand-magic-sparkles text-purple-400"></i>
+          AI-Personalized DM
+        </h3>
+        <button id="close-dm-modal"
+          class="w-8 h-8 rounded-xl hover:bg-slate-700 flex items-center justify-center transition-colors flex-shrink-0">
+          <i class="fa-solid fa-xmark text-slate-400"></i>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-4">
+        <!-- Candidate info -->
+        <div id="dm-candidate-info" class="p-3 bg-slate-800/60 rounded-xl text-sm"></div>
+
+        <!-- Message textarea -->
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-2">Message</label>
+          <textarea
+            id="dm-text"
+            rows="7"
+            class="w-full bg-[#1e293b] border border-slate-600 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition resize-none leading-relaxed"
+            placeholder="Your personalized message will appear here…"
+          ></textarea>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex gap-3">
+          <button id="regen-dm-btn"
+            class="flex-1 py-2.5 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-xl text-sm text-purple-300 transition-colors flex items-center justify-center gap-2">
+            <i class="fa-solid fa-rotate"></i>
+            Regenerate
+          </button>
+          <button id="send-dm-btn"
+            class="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+            <i class="fa-solid fa-paper-plane"></i>
+            Send DM
+          </button>
+        </div>
+
+        <!-- Status -->
+        <div id="dm-status" class="hidden text-xs text-slate-400 text-center"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════
+       GEMINI KEY MODAL
+       ════════════════════════════════════════════ -->
+  <div id="gemini-modal"
+    class="hidden fixed inset-0 z-50 items-center justify-center p-4 modal-backdrop">
+
+    <div class="bg-[#0f172a] border border-slate-600/80 rounded-2xl w-full max-w-md shadow-2xl">
+      <div class="flex items-center justify-between p-6 pb-0">
+        <h3 class="text-white font-semibold flex items-center gap-2">
+          <i class="fa-solid fa-key text-yellow-400"></i>
+          Gemini API Key
+        </h3>
+        <button id="close-gemini-modal"
+          class="w-8 h-8 rounded-xl hover:bg-slate-700 flex items-center justify-center transition-colors">
+          <i class="fa-solid fa-xmark text-slate-400"></i>
+        </button>
+      </div>
+
+      <div class="p-6 space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-300 mb-1">API Key</label>
+          <p class="text-xs text-slate-500 mb-3">
+            Get your free key at
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener"
+              class="text-blue-400 hover:underline">aistudio.google.com</a>
+          </p>
+          <input
+            id="gemini-key-input"
+            type="password"
+            placeholder="AIzaSy…"
+            autocomplete="off"
+            class="w-full bg-[#1e293b] border border-slate-600 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500/30 transition font-mono text-sm"
+          />
+        </div>
+        <button id="save-gemini-btn"
+          class="w-full py-3 bg-yellow-500 hover:bg-yellow-400 active:bg-yellow-600 text-black rounded-xl font-semibold transition-colors">
+          Save Key
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════
+       TOAST CONTAINER
+       ════════════════════════════════════════════ -->
+  <div id="toast-container"
+    class="fixed bottom-20 right-4 z-50 flex flex-col gap-2 pointer-events-none max-w-sm">
+  </div>
+
+  <!-- ════════════════════════════════════════════
+       MOBILE TAB BAR (visible only on small screens)
+       ════════════════════════════════════════════ -->
+  <div class="fixed bottom-0 left-0 right-0 z-40 sm:hidden bg-[#0f172a] border-t border-slate-700/80">
+    <div class="flex">
+      <button data-tab="login"
+        class="tab-btn flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] text-slate-400 hover:text-blue-400 transition-colors">
+        <i class="fa-solid fa-user text-sm"></i>
+        Login
+      </button>
+      <button data-tab="search"
+        class="tab-btn flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] text-slate-400 hover:text-blue-400 transition-colors">
+        <i class="fa-solid fa-magnifying-glass text-sm"></i>
+        Search
+      </button>
+      <button data-tab="scan"
+        class="tab-btn flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] text-slate-400 hover:text-blue-400 transition-colors">
+        <i class="fa-solid fa-satellite-dish text-sm"></i>
+        Scan
+      </button>
+      <button data-tab="outreach"
+        class="tab-btn flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] text-slate-400 hover:text-blue-400 transition-colors">
+        <i class="fa-solid fa-paper-plane text-sm"></i>
+        Outreach
+      </button>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════
+       MAIN APP SCRIPT (ES module)
+       ════════════════════════════════════════════ -->
+  <script type="module" src="app.js"></script>
+
+</body>
+</html>
