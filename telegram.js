@@ -1,11 +1,17 @@
 /**
  * telegram.js — GramJS CDN loader with multi-CDN fallback
  *
- * FIXED: Removed all ESM imports because they miss internal dependencies 
- * like helpers.generateRandomLong. Now we ONLY use the pre-compiled 
- * browser bundle, falling back to different CDNs if one fails.
+ * IMPORTANT: The unpkg *browser bundle* is the only CDN that reliably
+ * includes ALL GramJS internals (helpers, crypto, MTProto) in one file.
+ * ESM-only CDNs (esm.sh, jsdelivr) often miss internal dependencies
+ * like helpers.generateRandomLong, causing crashes after TelegramClient
+ * is instantiated. So we always try the browser bundle first.
  */
 
+/**
+ * Load unpkg browser bundle via <script> tag.
+ * It exposes everything on window.gramjs (or window.TelegramLib).
+ */
 function loadFromScript(url) {
   return new Promise((resolve, reject) => {
     const existing = document.querySelector(`script[src="${url}"]`);
@@ -22,6 +28,7 @@ function loadFromScript(url) {
 
     s.onload = () => {
       clearTimeout(timer);
+      // The unpkg browser build exposes window.gramjs
       const g = window.gramjs || window.TelegramLib;
       if (g && g.TelegramClient) {
         resolve(g);
@@ -40,14 +47,25 @@ function loadFromScript(url) {
   });
 }
 
+/**
+ * Given a raw module/object, extract { TelegramClient, Api, StringSession }.
+ * Handles multiple export shapes from different CDNs.
+ */
 function extractLib(mod) {
   const root = (mod && mod.default) ? { ...mod.default, ...mod } : mod;
 
-  const TelegramClient = root.TelegramClient || (root.client && root.client.TelegramClient);
-  const Api = root.Api || root.tl || (root.api && root.api.Api);
-  const StringSession = 
-    root.StringSession || 
-    (root.sessions && root.sessions.StringSession) || 
+  const TelegramClient =
+    root.TelegramClient ||
+    (root.client && root.client.TelegramClient);
+
+  const Api =
+    root.Api ||
+    root.tl ||
+    (root.api && root.api.Api);
+
+  const StringSession =
+    root.StringSession ||
+    (root.sessions && root.sessions.StringSession) ||
     (root.session && root.session.StringSession);
 
   if (!TelegramClient) throw new Error('TelegramClient not found in module');
@@ -56,10 +74,15 @@ function extractLib(mod) {
   return { TelegramClient, Api, StringSession };
 }
 
+/**
+ * Try CDN sources in order.
+ * unpkg browser bundle is FIRST because it's the only fully-bundled build.
+ * ESM sources are fallbacks only.
+ */
 export async function loadGramJS() {
   const errors = [];
 
-  // ── 1. unpkg browser bundle (Primary) ──────────────────────────────────
+  // ── 1. unpkg browser bundle (most reliable, fully bundled) ──────────────
   try {
     const mod = await loadFromScript(
       'https://unpkg.com/telegram@2.26.22/dist/browser/index.js'
@@ -72,31 +95,32 @@ export async function loadGramJS() {
     errors.push('unpkg: ' + err.message);
   }
 
-  // ── 2. jsdelivr browser bundle (Fallback 1 - FIXED) ────────────────────
+  // ── 2. esm.sh (ESM fallback) ─────────────────────────────────────────────
   try {
-    // ESM ki jagah hum jsdelivr ka browser bundle use kar rahe hain
-    const mod = await loadFromScript(
-      'https://cdn.jsdelivr.net/npm/telegram@2.26.22/dist/browser/index.js'
-    );
-    const lib = extractLib(mod);
-    console.info('[TG] GramJS loaded from jsdelivr browser bundle ✓');
+    const [tgMod, sessMod] = await Promise.all([
+      import('https://esm.sh/telegram@2.26.22'),
+      import('https://esm.sh/telegram@2.26.22/sessions'),
+    ]);
+    const lib = extractLib({ ...tgMod, StringSession: sessMod.StringSession });
+    console.info('[TG] GramJS loaded from esm.sh ✓');
+    return lib;
+  } catch (err) {
+    console.warn('[TG] esm.sh failed:', err.message);
+    errors.push('esm.sh: ' + err.message);
+  }
+
+  // ── 3. jsdelivr ESM (last resort) ────────────────────────────────────────
+  try {
+    const [tgMod, sessMod] = await Promise.all([
+      import('https://cdn.jsdelivr.net/npm/telegram@2.26.22/+esm'),
+      import('https://cdn.jsdelivr.net/npm/telegram@2.26.22/sessions/+esm'),
+    ]);
+    const lib = extractLib({ ...tgMod, StringSession: sessMod.StringSession });
+    console.info('[TG] GramJS loaded from jsdelivr ✓');
     return lib;
   } catch (err) {
     console.warn('[TG] jsdelivr failed:', err.message);
     errors.push('jsdelivr: ' + err.message);
-  }
-
-  // ── 3. cdnjs browser bundle (Fallback 2 - EXTRA SAFETY) ────────────────
-  try {
-    const mod = await loadFromScript(
-      'https://cdnjs.cloudflare.com/ajax/libs/telegram/2.26.22/telegram.min.js'
-    );
-    const lib = extractLib(mod);
-    console.info('[TG] GramJS loaded from cdnjs browser bundle ✓');
-    return lib;
-  } catch (err) {
-    console.warn('[TG] cdnjs failed:', err.message);
-    errors.push('cdnjs: ' + err.message);
   }
 
   throw new Error('All GramJS CDN sources failed.\n' + errors.join('\n'));
@@ -105,6 +129,10 @@ export async function loadGramJS() {
 // Cached promise — loads only once per page session
 let _gramPromise = null;
 
+/**
+ * Returns a cached promise that resolves to the GramJS lib.
+ * Safe to call multiple times from anywhere.
+ */
 export function ensureGramReady() {
   if (!_gramPromise) {
     _gramPromise = loadGramJS().catch((err) => {
