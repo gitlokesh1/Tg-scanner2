@@ -41,11 +41,16 @@ export async function beginLogin(phone, gramLib, onStateChange) {
   _currentAuth = auth;
 
   const session = new StringSession('');
+
+  // NOTE: Do NOT pass baseLogger or any custom logger object.
+  // GramJS expects its own Logger instance with .info/.debug/.warn/.error methods.
+  // Just pass connectionRetries; silence logs via client.setLogLevel() after creation.
   const client = new TelegramClient(session, API_ID, API_HASH, {
     connectionRetries: 5,
-    useWSS: true,
-    baseLogger: { levels: [], log: () => {} },
   });
+
+  // Silence all GramJS internal logs
+  try { client.setLogLevel('none'); } catch (_) {}
 
   onStateChange({ step: 'sending', message: 'Connecting to Telegram…' });
 
@@ -139,7 +144,7 @@ export function submitPassword(password) {
   }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function _loadAccounts() {
   try {
