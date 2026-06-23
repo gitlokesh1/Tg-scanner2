@@ -20,63 +20,44 @@ const STORAGE_KEYS = {
 // Holds resolvers for the current active login flow
 let _currentAuth = null;
 
-/**
- * Start the Telegram login flow.
- *
- * @param {string} phone              — E.164 phone number e.g. "+917890123456"
- * @param {{TelegramClient, Api, StringSession}} gramLib  — loaded GramJS lib
- * @param {function(authState): void} onStateChange       — called on each step change
- */
 export async function beginLogin(phone, gramLib, onStateChange) {
-  // Validate phone
   if (!phone || !phone.startsWith('+')) {
     onStateChange({ step: 'error', message: 'Phone number must start with + (e.g. +917890123456)' });
     return;
   }
 
   const { TelegramClient, StringSession } = gramLib;
-
-  // Create a fresh auth context
   const auth = { resolveOtp: null, resolvePassword: null };
   _currentAuth = auth;
 
   const session = new StringSession('');
 
-  // ── FIX APPLIED HERE ──────────────────────────────────────────────────
-  // Browser require WebSockets to connect to Telegram servers.
-  // Added useWSS: true to fix the infinite "Connecting..." loop.
   const client = new TelegramClient(session, API_ID, API_HASH, {
     connectionRetries: 5,
-    useWSS: true, // <--- YE LINE MISSING THI
+    useWSS: true, 
   });
 
-  // Silence all GramJS internal logs
   try { client.setLogLevel('none'); } catch (_) {}
 
   onStateChange({ step: 'sending', message: 'Connecting to Telegram…' });
 
   try {
-    await client.connect();
+    // ❌ HATA DIYA: await client.connect();
 
     await client.start({
       phoneNumber: async () => phone,
-
       phoneCode: async () => {
         onStateChange({ step: 'otp', message: 'OTP sent! Check your Telegram app or SMS.' });
-        // Wait for submitOtp() to be called
         return new Promise((resolve) => {
           auth.resolveOtp = resolve;
         });
       },
-
       password: async () => {
         onStateChange({ step: 'password', message: '2FA enabled. Enter your cloud password.' });
-        // Wait for submitPassword() to be called
         return new Promise((resolve) => {
           auth.resolvePassword = resolve;
         });
       },
-
       onError: (err) => {
         onStateChange({ step: 'error', message: err.message || 'Login failed' });
       },
@@ -85,7 +66,6 @@ export async function beginLogin(phone, gramLib, onStateChange) {
     // ── Login successful ──────────────────────────────────────────────────
     const sessionStr = client.session.save();
 
-    // Fetch user info
     let name = phone;
     let username = '';
     let initials = phone.slice(-2).toUpperCase();
@@ -97,11 +77,8 @@ export async function beginLogin(phone, gramLib, onStateChange) {
       initials =
         ((me.firstName?.[0] || '') + (me.lastName?.[0] || '')).toUpperCase() ||
         phone.slice(-2).toUpperCase();
-    } catch (_) {
-      // Non-fatal; use defaults
-    }
+    } catch (_) {}
 
-    // Persist to localStorage
     const accounts = _loadAccounts();
     accounts[phone] = { phone, name, username, initials, session: sessionStr };
     _saveAccounts(accounts);
@@ -123,10 +100,6 @@ export async function beginLogin(phone, gramLib, onStateChange) {
   }
 }
 
-/**
- * Resolve the pending OTP promise.
- * @param {string} code
- */
 export function submitOtp(code) {
   if (_currentAuth?.resolveOtp) {
     _currentAuth.resolveOtp(code);
@@ -134,18 +107,12 @@ export function submitOtp(code) {
   }
 }
 
-/**
- * Resolve the pending 2FA password promise.
- * @param {string} password
- */
 export function submitPassword(password) {
   if (_currentAuth?.resolvePassword) {
     _currentAuth.resolvePassword(password);
     _currentAuth.resolvePassword = null;
   }
 }
-
-// ── Helpers ────────────────────────────────────────────────────────────────
 
 function _loadAccounts() {
   try {
