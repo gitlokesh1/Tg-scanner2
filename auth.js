@@ -4,9 +4,9 @@
  * Steps: phone → sending → otp → verifying → password → done | error
  *
  * Usage:
- *   beginLogin(phone, gramLib, onStateChange)
- *   submitOtp(code)        — call when user submits OTP
- *   submitPassword(pass)   — call when user submits 2FA password
+ * beginLogin(phone, gramLib, onStateChange)
+ * submitOtp(code)        — call when user submits OTP
+ * submitPassword(pass)   — call when user submits 2FA password
  */
 
 const API_ID = 39942557;
@@ -34,18 +34,17 @@ export async function beginLogin(phone, gramLib, onStateChange) {
     return;
   }
 
-  const { TelegramClient, StringSession } = gramLib;
+  // Sirf TelegramClient chahiye, StringSession ki zarurat nahi hai ab
+  const { TelegramClient } = gramLib;
 
   // Create a fresh auth context
   const auth = { resolveOtp: null, resolvePassword: null };
   _currentAuth = auth;
 
-  const session = new StringSession('');
-
-  // NOTE: Do NOT pass baseLogger or any custom logger object.
-  // GramJS expects its own Logger instance with .info/.debug/.warn/.error methods.
-  // Just pass connectionRetries; silence logs via client.setLogLevel() after creation.
-  const client = new TelegramClient(session, API_ID, API_HASH, {
+  // ── FIX APPLIED HERE ──────────────────────────────────────────────────
+  // Hum session parameter mein seedha ek empty string ('') pass kar rahe hain.
+  // GramJS isko khud automatically StringSession mein convert kar lega.
+  const client = new TelegramClient('', API_ID, API_HASH, {
     connectionRetries: 5,
   });
 
