@@ -20,39 +20,36 @@ const STORAGE_KEYS = {
 // Holds resolvers for the current active login flow
 let _currentAuth = null;
 
+/**
+ * Start the Telegram login flow.
+ *
+ * @param {string} phone              — E.164 phone number e.g. "+917890123456"
+ * @param {{TelegramClient, Api, StringSession}} gramLib  — loaded GramJS lib
+ * @param {function(authState): void} onStateChange       — called on each step change
+ */
 export async function beginLogin(phone, gramLib, onStateChange) {
+  // Validate phone
   if (!phone || !phone.startsWith('+')) {
     onStateChange({ step: 'error', message: 'Phone number must start with + (e.g. +917890123456)' });
     return;
   }
 
   const { TelegramClient, StringSession } = gramLib;
+
+  // Create a fresh auth context
   const auth = { resolveOtp: null, resolvePassword: null };
   _currentAuth = auth;
 
-  // ── DUAL SESSION LOGIC ────────────────────────────────────────────────
-  // Check karein ki kya is phone number ka session pehle se saved hai
-  const accounts = _loadAccounts();
-  const existingSessionStr = accounts[phone] ? accounts[phone].session : '';
-  
-  // Agar account pehle se logged in hai toh purana session load hoga,
-  // warna naye login ke liye empty string load hoga.
-  const session = new StringSession(existingSessionStr);
+  const session = new StringSession('');
 
-  // ── MAGIC FIX FOR CDN ERROR ───────────────────────────────────────────
-  // GramJS check karta hai session.constructor.name === 'StringSession'
-  // Minified files mein naam change ho jata hai isliye error aata hai.
-  // Hum forcefully bypass kar rahe hain:
-  Object.defineProperty(session, 'constructor', { 
-    value: { name: 'StringSession' },
-    writable: true,
-    enumerable: false
-  });
-
+  // NOTE: Do NOT pass baseLogger or any custom logger object.
+  // GramJS expects its own Logger instance with .info/.debug/.warn/.error methods.
+  // Just pass connectionRetries; silence logs via client.setLogLevel() after creation.
   const client = new TelegramClient(session, API_ID, API_HASH, {
     connectionRetries: 5,
   });
 
+  // Silence all GramJS internal logs
   try { client.setLogLevel('none'); } catch (_) {}
 
   onStateChange({ step: 'sending', message: 'Connecting to Telegram…' });
@@ -60,30 +57,34 @@ export async function beginLogin(phone, gramLib, onStateChange) {
   try {
     await client.connect();
 
-    // Agar hum switch kar rahe hain (existing session load hua hai) aur hum
-    // already authorized hain, toh OTP/Password flow skip ho jayega!
-    const isAuthorized = await client.checkAuthorization();
-    
-    if (!isAuthorized) {
-        await client.start({
-          phoneNumber: async () => phone,
-          phoneCode: async () => {
-            onStateChange({ step: 'otp', message: 'OTP sent! Check your Telegram app or SMS.' });
-            return new Promise((resolve) => { auth.resolveOtp = resolve; });
-          },
-          password: async () => {
-            onStateChange({ step: 'password', message: '2FA enabled. Enter your cloud password.' });
-            return new Promise((resolve) => { auth.resolvePassword = resolve; });
-          },
-          onError: (err) => {
-            onStateChange({ step: 'error', message: err.message || 'Login failed' });
-          },
-        });
-    }
+    await client.start({
+      phoneNumber: async () => phone,
 
-    // ── Login ya Switch successful ─────────────────────────────────────────
+      phoneCode: async () => {
+        onStateChange({ step: 'otp', message: 'OTP sent! Check your Telegram app or SMS.' });
+        // Wait for submitOtp() to be called
+        return new Promise((resolve) => {
+          auth.resolveOtp = resolve;
+        });
+      },
+
+      password: async () => {
+        onStateChange({ step: 'password', message: '2FA enabled. Enter your cloud password.' });
+        // Wait for submitPassword() to be called
+        return new Promise((resolve) => {
+          auth.resolvePassword = resolve;
+        });
+      },
+
+      onError: (err) => {
+        onStateChange({ step: 'error', message: err.message || 'Login failed' });
+      },
+    });
+
+    // ── Login successful ──────────────────────────────────────────────────
     const sessionStr = client.session.save();
 
+    // Fetch user info
     let name = phone;
     let username = '';
     let initials = phone.slice(-2).toUpperCase();
@@ -95,12 +96,14 @@ export async function beginLogin(phone, gramLib, onStateChange) {
       initials =
         ((me.firstName?.[0] || '') + (me.lastName?.[0] || '')).toUpperCase() ||
         phone.slice(-2).toUpperCase();
-    } catch (_) {}
+    } catch (_) {
+      // Non-fatal; use defaults
+    }
 
-    // Persist to localStorage (Save multiple accounts)
-    const updatedAccounts = _loadAccounts();
-    updatedAccounts[phone] = { phone, name, username, initials, session: sessionStr };
-    _saveAccounts(updatedAccounts);
+    // Persist to localStorage
+    const accounts = _loadAccounts();
+    accounts[phone] = { phone, name, username, initials, session: sessionStr };
+    _saveAccounts(accounts);
     localStorage.setItem(STORAGE_KEYS.activePhone, phone);
 
     onStateChange({
@@ -119,6 +122,10 @@ export async function beginLogin(phone, gramLib, onStateChange) {
   }
 }
 
+/**
+ * Resolve the pending OTP promise.
+ * @param {string} code
+ */
 export function submitOtp(code) {
   if (_currentAuth?.resolveOtp) {
     _currentAuth.resolveOtp(code);
@@ -126,6 +133,10 @@ export function submitOtp(code) {
   }
 }
 
+/**
+ * Resolve the pending 2FA password promise.
+ * @param {string} password
+ */
 export function submitPassword(password) {
   if (_currentAuth?.resolvePassword) {
     _currentAuth.resolvePassword(password);
