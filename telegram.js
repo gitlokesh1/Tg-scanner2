@@ -95,13 +95,12 @@ export async function loadGramJS() {
     errors.push('unpkg: ' + err.message);
   }
 
-  // ── 2. esm.sh (ESM fallback) ─────────────────────────────────────────────
+  // ── 2. esm.sh (ESM fallback - FIXED: SINGLE IMPORT) ─────────────────────
   try {
-    const [tgMod, sessMod] = await Promise.all([
-      import('https://esm.sh/telegram@2.26.22'),
-      import('https://esm.sh/telegram@2.26.22/sessions'),
-    ]);
-    const lib = extractLib({ ...tgMod, StringSession: sessMod.StringSession });
+    // Ab hum sirf ek hi import karenge. extractLib() khud andar se StringSession nikal lega.
+    const mod = await import('https://esm.sh/telegram@2.26.22');
+    const lib = extractLib(mod);
+    
     console.info('[TG] GramJS loaded from esm.sh ✓');
     return lib;
   } catch (err) {
@@ -109,13 +108,11 @@ export async function loadGramJS() {
     errors.push('esm.sh: ' + err.message);
   }
 
-  // ── 3. jsdelivr ESM (last resort) ────────────────────────────────────────
+  // ── 3. jsdelivr ESM (last resort - FIXED: SINGLE IMPORT) ────────────────
   try {
-    const [tgMod, sessMod] = await Promise.all([
-      import('https://cdn.jsdelivr.net/npm/telegram@2.26.22/+esm'),
-      import('https://cdn.jsdelivr.net/npm/telegram@2.26.22/sessions/+esm'),
-    ]);
-    const lib = extractLib({ ...tgMod, StringSession: sessMod.StringSession });
+    const mod = await import('https://cdn.jsdelivr.net/npm/telegram@2.26.22/+esm');
+    const lib = extractLib(mod);
+    
     console.info('[TG] GramJS loaded from jsdelivr ✓');
     return lib;
   } catch (err) {
