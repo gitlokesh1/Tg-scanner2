@@ -1,44 +1,10 @@
 /**
- * telegram.js — GramJS CDN loader with multi-CDN fallback
+ * telegram.js — GramJS CDN loader
  *
- * FIXED: Removed all ESM imports to prevent 'StringSession' crashes.
- * Removed 'crossOrigin="anonymous"' to bypass Render.com strict CORS blocking.
+ * FIXED: The pre-compiled browser bundle file does NOT exist in v2.26.22.
+ * We now use pure ESM imports with '?bundle' to force CDNs to package all 
+ * internal dependencies into a single file, preventing 'generateRandomLong' errors.
  */
-
-function loadFromScript(url) {
-  return new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[src="${url}"]`);
-    if (existing) existing.remove();
-
-    const s = document.createElement('script');
-    s.src = url;
-    
-    // crossOrigin hata diya gaya hai taaki Render.com par script block na ho
-
-    const timer = setTimeout(() => {
-      s.remove();
-      reject(new Error(`Timeout loading script: ${url}`));
-    }, 40000);
-
-    s.onload = () => {
-      clearTimeout(timer);
-      const g = window.gramjs || window.TelegramLib;
-      if (g && g.TelegramClient) {
-        resolve(g);
-      } else {
-        reject(new Error('TelegramClient not found on window after script load'));
-      }
-    };
-
-    s.onerror = () => {
-      clearTimeout(timer);
-      s.remove();
-      reject(new Error(`Script load error: ${url}`));
-    };
-
-    document.head.appendChild(s);
-  });
-}
 
 function extractLib(mod) {
   const root = (mod && mod.default) ? { ...mod.default, ...mod } : mod;
@@ -59,30 +25,37 @@ function extractLib(mod) {
 export async function loadGramJS() {
   const errors = [];
 
-  // ── 1. jsdelivr browser bundle (Primary - No CORS issues usually) ───────
+  // ── 1. esm.sh Bundled (Primary: Packs all internals into one file) ───────
   try {
-    const mod = await loadFromScript(
-      'https://cdn.jsdelivr.net/npm/telegram@2.26.22/dist/browser/index.js'
-    );
+    const mod = await import('https://esm.sh/telegram@2.26.22?bundle');
     const lib = extractLib(mod);
-    console.info('[TG] GramJS loaded from jsdelivr browser bundle ✓');
+    console.info('[TG] GramJS loaded from esm.sh (bundled) ✓');
     return lib;
   } catch (err) {
-    console.warn('[TG] jsdelivr failed:', err.message);
-    errors.push('jsdelivr: ' + err.message);
+    console.warn('[TG] esm.sh failed:', err.message);
+    errors.push('esm.sh: ' + err.message);
   }
 
-  // ── 2. unpkg browser bundle (Fallback) ──────────────────────────────────
+  // ── 2. Skypack (Excellent built-in Node polyfills) ───────────────────────
   try {
-    const mod = await loadFromScript(
-      'https://unpkg.com/telegram@2.26.22/dist/browser/index.js'
-    );
+    const mod = await import('https://cdn.skypack.dev/telegram@2.26.22?min');
     const lib = extractLib(mod);
-    console.info('[TG] GramJS loaded from unpkg browser bundle ✓');
+    console.info('[TG] GramJS loaded from Skypack ✓');
     return lib;
   } catch (err) {
-    console.warn('[TG] unpkg failed:', err.message);
-    errors.push('unpkg: ' + err.message);
+    console.warn('[TG] skypack failed:', err.message);
+    errors.push('skypack: ' + err.message);
+  }
+
+  // ── 3. jsdelivr ESM (Fallback) ───────────────────────────────────────────
+  try {
+    const mod = await import('https://cdn.jsdelivr.net/npm/telegram@2.26.22/+esm');
+    const lib = extractLib(mod);
+    console.info('[TG] GramJS loaded from jsdelivr ESM ✓');
+    return lib;
+  } catch (err) {
+    console.warn('[TG] jsdelivr ESM failed:', err.message);
+    errors.push('jsdelivr ESM: ' + err.message);
   }
 
   throw new Error('All GramJS CDN sources failed.\n' + errors.join('\n'));
