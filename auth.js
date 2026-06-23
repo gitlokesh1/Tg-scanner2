@@ -42,11 +42,12 @@ export async function beginLogin(phone, gramLib, onStateChange) {
 
   const session = new StringSession('');
 
-  // NOTE: Do NOT pass baseLogger or any custom logger object.
-  // GramJS expects its own Logger instance with .info/.debug/.warn/.error methods.
-  // Just pass connectionRetries; silence logs via client.setLogLevel() after creation.
+  // ── FIX APPLIED HERE ──────────────────────────────────────────────────
+  // Browser require WebSockets to connect to Telegram servers.
+  // Added useWSS: true to fix the infinite "Connecting..." loop.
   const client = new TelegramClient(session, API_ID, API_HASH, {
     connectionRetries: 5,
+    useWSS: true, // <--- YE LINE MISSING THI
   });
 
   // Silence all GramJS internal logs
