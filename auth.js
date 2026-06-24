@@ -26,6 +26,7 @@ export async function beginLogin(phone, gramLib, onStateChange) {
 
   const session = new StringSession('');
 
+  // useWSS: true is REQUIRED for browsers to connect
   const client = new TelegramClient(session, API_ID, API_HASH, {
     connectionRetries: 5,
     useWSS: true, 
@@ -36,9 +37,8 @@ export async function beginLogin(phone, gramLib, onStateChange) {
   onStateChange({ step: 'sending', message: 'Connecting to Telegram…' });
 
   try {
-    // Connect first for native browser build
-    await client.connect();
-
+    // 🔥 CRITICAL FIX: Do NOT use await client.connect() here.
+    // client.start() will automatically handle the WebSocket connection.
     await client.start({
       phoneNumber: async () => phone,
       phoneCode: async () => {
@@ -73,10 +73,10 @@ export async function beginLogin(phone, gramLib, onStateChange) {
         phone.slice(-2).toUpperCase();
     } catch (_) {}
 
-    // 🔥 SAVE TO SUPABASE 🔥
+    // 🔥 SAVE TO SUPABASE
     await saveSessionToDB(phone, sessionStr, name);
 
-    // Save locally for fast UI load
+    // Save locally for fast UI update
     const accounts = _loadAccounts();
     accounts[phone] = { phone, name, username, initials, session: sessionStr };
     _saveAccounts(accounts);
