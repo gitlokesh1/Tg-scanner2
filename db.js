@@ -3,8 +3,8 @@
  */
 
 // 👇 Yahan apna asli Supabase Project URL aur Anon Key daalein
-const SUPABASE_URL = 'YOUR_SUPABASE_PROJECT_URL';
-const SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL = 'https://vgbosvselqlzeznnadxb.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZnYm9zdnNlbHFsemV6bm5hZHhiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2MzQyNDEsImV4cCI6MjA5MTIxMDI0MX0.O6lZJmjEQgWwEpCLmKwvagdSH807PARVL1bonSwnlyY';
 
 // window.supabase CDN se aayega (index.html mein add kiya gaya hai)
 export const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
